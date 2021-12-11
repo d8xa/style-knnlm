@@ -53,16 +53,20 @@ print('Adding Keys')
 index = faiss.read_index(args.faiss_index+".trained")
 start = args.starting_point
 start_time = time.time()
+step_start = time.time() # TODO: measure time between each print interval
+print_interval = args.num_keys_to_add_at_a_time
 while start < args.dstore_size:
     end = min(args.dstore_size, start+args.num_keys_to_add_at_a_time)
     to_add = keys[start:end].copy()
     index.add_with_ids(to_add.astype(np.float32), np.arange(start, end))
     start += args.num_keys_to_add_at_a_time
 
-    if (start % 1000000) == 0:
+    if (start % print_interval) == 0:
         print('Added %d tokens so far' % start)
         print('Writing Index', start)
         faiss.write_index(index, args.faiss_index)
+        print('Took {:.3f} s'.format(time.time() - step_start))
+        step_start = time.time()
 
 print("Adding total %d keys" % start)
 print('Adding took {} s'.format(time.time() - start_time))

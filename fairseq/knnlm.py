@@ -46,13 +46,13 @@ class KNN_Dstore(object):
 
             if not args.no_load_keys:
                 del self.keys
-                self.keys_from_memmap = np.memmap(args.dstore_filename+'_keys.npy', dtype=np.float32, mode='r', shape=(self.dstore_size, self.dimension))
+                self.keys_from_memmap = np.memmap(args.dstore_filename+'_keys.npy', dtype=np.float16 if args.dstore_fp16 else np.float32, mode='r', shape=(self.dstore_size, self.dimension))
                 self.keys = np.zeros((self.dstore_size, self.dimension), dtype=np.float16 if args.dstore_fp16 else np.float32)
                 self.keys = self.keys_from_memmap[:]
                 self.keys = self.keys.astype(np.float16 if args.dstore_fp16 else np.float32)
 
             del self.vals
-            self.vals_from_memmap = np.memmap(args.dstore_filename+'_vals.npy', dtype=np.int, mode='r', shape=(self.dstore_size, 1))
+            self.vals_from_memmap = np.memmap(args.dstore_filename+'_vals.npy', dtype=np.int16 if args.dstore_fp16 else np.int, mode='r', shape=(self.dstore_size, 1))
             self.vals = np.zeros((self.dstore_size, 1), dtype=np.int16 if args.dstore_fp16 else np.int)
             self.vals = self.vals_from_memmap[:]
             self.vals = self.vals.astype(np.int16 if args.dstore_fp16 else np.int)
@@ -110,7 +110,7 @@ class KNN_Dstore(object):
 
         # (T_reducedxB)
         yhat_knn_prob = torch.logsumexp(probs + index_mask, dim=-1).clone()
-        full_yhat_knn_prob = torch.full([qshape[0]*qshape[1]], -10000).cuda()
+        full_yhat_knn_prob = torch.full([qshape[0]*qshape[1]], -10000).cuda().float()
         full_yhat_knn_prob[tgt != pad_idx] = yhat_knn_prob
 
         # TxBx1
