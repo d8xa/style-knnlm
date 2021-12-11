@@ -66,6 +66,12 @@ class LMContextWindowDataset(FairseqDataset):
     def size(self, index):
         return self.dataset.size(index)
 
+    @property
+    def sizes(self):
+        if not hasattr(self, "_sizes"):
+            self._sizes = np.array([self.num_tokens(i) for i in range(len(self))]) #+ self.context_window
+        return self._sizes
+
     def ordered_indices(self):
         # NOTE we don't shuffle the data to retain access to the previous dataset elements
         return np.arange(len(self.dataset))
