@@ -188,6 +188,7 @@ def main(parsed_args):
                         if dstore_idx + shape[0] > args.dstore_size:
                             shape = [args.dstore_size - dstore_idx]
                             hypo['dstore_keys'] = hypo['dstore_keys'][:shape[0]]
+                            hypo['tokens'] = hypo['tokens'][:shape[0]]
                         if args.dstore_fp16:
                             dstore_keys[dstore_idx:shape[0]+dstore_idx] = hypo['dstore_keys'].view(
                                 -1, args.decoder_embed_dim).cpu().numpy().astype(np.float16)

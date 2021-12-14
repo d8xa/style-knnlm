@@ -167,6 +167,7 @@ def train(args, trainer, task, epoch_itr):
 
     valid_subsets = args.valid_subset.split(',')
     max_update = args.max_update or math.inf
+    num_updates = 0 
     for samples in progress:
         log_output = trainer.train_step(samples)
         num_updates = trainer.get_num_updates()
