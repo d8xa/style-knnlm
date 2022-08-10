@@ -18,7 +18,7 @@ import torch
 
 from fairseq import checkpoint_utils, options, tasks, utils
 from fairseq.data import encoders
-
+from fairseq.dstore.dstore import KNN_Dstore
 
 logging.basicConfig(
     format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
@@ -81,7 +81,7 @@ def main(args):
     assert not args.max_sentences or args.max_sentences <= args.buffer_size, \
         '--max-sentences/--batch-size cannot be larger than --buffer-size'
 
-    logger.info(args)
+    logger.debug(args)
 
     use_cuda = torch.cuda.is_available() and not args.cpu
 
@@ -113,6 +113,9 @@ def main(args):
 
     # Initialize generator
     generator = task.build_generator(args)
+
+    # Initialize dstore
+    knn_dstore = KNN_Dstore(args) if args.knnlm else None
 
     # Handle tokenization and BPE
     tokenizer = encoders.build_tokenizer(args)
@@ -159,9 +162,28 @@ def main(args):
                 'net_input': {
                     'src_tokens': src_tokens,
                     'src_lengths': src_lengths,
-                },
+                }
             }
-            translations = task.inference_step(generator, models, sample)
+
+            # convert style value to tensor
+            if args.style is not None:
+                style = torch.tensor([args.style], 
+                    dtype=(
+                        torch.float32 # REVIEW: use model precision
+                        #if args.fp16
+                        #else torch.float64
+                    ),
+                    device=src_tokens.device
+                ).reshape(1,1,-1)
+            else:
+                style = None  
+            translations = task.inference_step(generator, models, sample, 
+                ## kwargs below
+                style=style, 
+                knn_dstore=knn_dstore, 
+                task=task,
+                args=args
+            )
             for i, (id, hypos) in enumerate(zip(batch.ids.tolist(), translations)):
                 src_tokens_i = utils.strip_pad(src_tokens[i], tgt_dict.pad())
                 results.append((start_id + id, src_tokens_i, hypos))
@@ -185,20 +207,23 @@ def main(args):
                 hypo_str = decode_fn(hypo_str)
                 score = hypo['score'] / math.log(2)  # convert to base 2
                 print('H-{}\t{}\t{}'.format(id, score, hypo_str))
-                print('P-{}\t{}'.format(
-                    id,
-                    ' '.join(map(
-                        lambda x: '{:.4f}'.format(x),
-                        # convert from base e to base 2
-                        hypo['positional_scores'].div_(math.log(2)).tolist(),
+                if args.print_positional:
+                    print('P-{}\t{}'.format(
+                        id,
+                        ' '.join(map(
+                            lambda x: '{:.4f}'.format(x),
+                            # convert from base e to base 2
+                            hypo['positional_scores'].div_(math.log(2)).tolist(),
+                        ))
                     ))
-                ))
                 if args.print_alignment:
                     alignment_str = " ".join(["{}-{}".format(src, tgt) for src, tgt in alignment])
                     print('A-{}\t{}'.format(
                         id,
                         alignment_str
                     ))
+
+            print()
 
         # update running id counter
         start_id += len(inputs)

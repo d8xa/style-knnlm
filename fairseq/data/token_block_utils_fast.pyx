@@ -128,6 +128,7 @@ cpdef np.ndarray[DTYPE_t, ndim=2] _get_block_to_dataset_index_fast(np.ndarray[DT
         if e <= s:
             end_ds_idx = start_ds_idx
         else:
+            ds.save_checkpoint() # save indices to allow ds to pick up at this point instead of resetting to zero.
             ds.seek(e - 1)
             end_ds_idx = ds.current_index
         block_to_dataset_index_view[i][0] = start_ds_idx  # starting index in dataset
@@ -142,6 +143,9 @@ cdef class DatasetSearcher(object):
     cdef DTYPE_t current_i
     cdef DTYPE_t current_offset
     cdef DTYPE_t current_index
+    cdef DTYPE_t prev_i
+    cdef DTYPE_t prev_offset
+    cdef DTYPE_t prev_index
     cdef DTYPE_t[:] sizes
 
     def __init__(self, DTYPE_t[:] sizes):
@@ -152,6 +156,9 @@ cdef class DatasetSearcher(object):
         self.current_offset = 0     # offset within current index in underlying dataset
         self.current_i = 0          # "flat" index
         self.current_index = 0      # index in underlying dataset
+        self.prev_offset = 0
+        self.prev_i = 0
+        self.prev_index = 0
 
     @cython.boundscheck(False)
     @cython.wraparound(False)
@@ -160,7 +167,7 @@ cdef class DatasetSearcher(object):
         cdef DTYPE_t to_consume
         cdef DTYPE_t remaining
         if i < self.current_i:
-            self.reset()
+            self.load_checkpoint()
         if i > self.current_i:
             to_consume = i - self.current_i
             remaining = self.sizes[self.current_index] - self.current_offset
@@ -183,3 +190,23 @@ cdef class DatasetSearcher(object):
         while not_done == 1:
             not_done = self.step(i)
         assert self.current_i == i
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    @cython.nonecheck(False)
+    cdef load_checkpoint(self):
+        """
+        Revert indices back to last saved state.
+        This is useful to avoid resetting the indices back to zero and having to re-seek the last valid position.
+        """
+        self.current_offset = self.prev_offset
+        self.current_i = self.prev_i
+        self.current_index = self.prev_index
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    @cython.nonecheck(False)
+    cdef save_checkpoint(self):
+        self.prev_offset = self.current_offset
+        self.prev_i = self.current_i
+        self.prev_index = self.current_index

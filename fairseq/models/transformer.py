@@ -24,9 +24,12 @@ from fairseq.modules import (
     SinusoidalPositionalEmbedding,
     TransformerDecoderLayer,
     TransformerEncoderLayer,
+    StyleInput
 )
 from torch import Tensor
 
+import logging
+logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_SOURCE_POSITIONS = 1024
 DEFAULT_MAX_TARGET_POSITIONS = 1024
@@ -577,7 +580,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         self.dropout = args.dropout
         self.decoder_layerdrop = args.decoder_layerdrop
         self.share_input_output_embed = args.share_decoder_input_output_embed
-        self.knn_keytype = args.knn_keytype
+        self.knn_keytype = getattr(args, 'knn_keytype', None) # REVIEW
 
         input_embed_dim = embed_tokens.embedding_dim
         embed_dim = args.decoder_embed_dim
@@ -608,6 +611,20 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             else None
         )
 
+        self.style_dim = getattr(args, "style_input_dim", 0)
+        if self.style_dim is None:
+            self.style_dim = 0
+        self.style_embed_dim = 0
+        self.embed_style = None
+        if self.style_dim > 0:
+            self.style_embed_dim = getattr(args, "style_embed_dim", self.style_dim)
+            self.embed_style = StyleInput(self.style_dim, self.style_embed_dim)
+        self.use_style_arch = (
+            args.arch == "transformer_lm_style"
+            or
+            self.style_embed_dim > 0
+        )
+
         self.cross_self_attention = getattr(args, "cross_self_attention", False)
         self.layer_wise_attention = getattr(args, "layer_wise_attention", False)
 
@@ -628,6 +645,11 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             else None
         )
 
+        if self.use_style_arch:
+            self.project_out_dim = Linear(
+                self.output_embed_dim + self.style_embed_dim, 
+                self.output_embed_dim, bias=False)
+    
         if args.adaptive_softmax_cutoff is not None:
             self.adaptive_softmax = AdaptiveSoftmax(
                 len(dictionary),
@@ -665,6 +687,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         alignment_heads: Optional[int] = None,
         src_lengths: Optional[Any] = None,
         return_all_hiddens: bool = False,
+        style: Optional[Tensor] = None        
     ):
         """
         Args:
@@ -688,6 +711,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             incremental_state=incremental_state,
             alignment_layer=alignment_layer,
             alignment_heads=alignment_heads,
+            style=style
         )
         if not features_only:
             x = self.output_layer(x)
@@ -701,6 +725,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         full_context_alignment: bool = False,
         alignment_layer: Optional[int] = None,
         alignment_heads: Optional[int] = None,
+        style: Optional[Tensor] = None
     ):
         """
         Similar to *forward* but only return features.
@@ -758,6 +783,15 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         self_attn_padding_mask: Optional[Tensor] = None
         if self.cross_self_attention or prev_output_tokens.eq(self.padding_idx).any():
             self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
+
+        # process style attributes
+        if style is not None:
+            style_proj = self.embed_style(style)\
+                .transpose(0,1)# (B,T,S) -> (T,B,S)
+            assert style_proj.device == x.device
+        
+        if self.use_style_arch:
+            x = torch.cat([x, style_proj], dim=2) # (T,B,C+S)
 
         # decoder layers
         attn: Optional[Tensor] = None
@@ -818,16 +852,26 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if self.layer_norm is not None:
             x = self.layer_norm(x)
 
-        # T x B x C -> B x T x C
+        # (T,B,C+S) -> (B,T,C+S)
         x = x.transpose(0, 1)
 
         if self.project_out_dim is not None:
             x = self.project_out_dim(x)
 
-        if self.knn_keytype == 'last_ffn_input':
-            return x, {'attn': [attn], 'inner_states': inner_states, self.knn_keytype: knn_emb}
+        output_dict = {
+            "attn": [attn], 
+            "inner_states": inner_states,
+        }
 
-        return x, {"attn": [attn], "inner_states": inner_states}
+        if style is not None:
+            output_dict.update({"style": style_proj})
+
+        if self.knn_keytype == 'last_ffn_input':
+            output_dict.update({
+                self.knn_keytype: knn_emb
+            })
+
+        return x, output_dict
 
     def output_layer(self, features):
         """Project features to the vocabulary size."""

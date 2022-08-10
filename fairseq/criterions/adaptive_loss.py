@@ -10,6 +10,9 @@ import torch.nn.functional as F
 from fairseq import metrics, utils
 from fairseq.criterions import FairseqCriterion, register_criterion
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 @register_criterion('adaptive_loss')
 class AdaptiveLoss(FairseqCriterion):
@@ -39,7 +42,7 @@ class AdaptiveLoss(FairseqCriterion):
         assert hasattr(model.decoder, 'adaptive_softmax') and model.decoder.adaptive_softmax is not None
         adaptive_softmax = model.decoder.adaptive_softmax
 
-        net_output = model(**sample['net_input'])
+        net_output = model(**sample['net_input'], style=sample.get('style', None))
         orig_target = model.get_targets(sample, net_output)
 
         nsentences = orig_target.size(0)

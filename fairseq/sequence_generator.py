@@ -10,6 +10,10 @@ import torch
 from fairseq import search, utils
 from fairseq.data import data_utils
 from fairseq.models import FairseqIncrementalDecoder
+from fairseq.dstore.dstore import combine_knn_and_vocab_probs
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 class SequenceGenerator(object):
@@ -272,7 +276,10 @@ class SequenceGenerator(object):
                 encoder_outs = model.reorder_encoder_out(encoder_outs, reorder_state)
 
             lprobs, avg_attn_scores = model.forward_decoder(
-                tokens[:, :step + 1], encoder_outs, temperature=self.temperature,
+                tokens[:, :step + 1], encoder_outs, temperature=self.temperature, 
+                **{k:v for k,v in kwargs.items() if k in [
+                    'style', 'args', 'task', 'knn_dstore'
+                ]}
             )
             lprobs[lprobs != lprobs] = -math.inf
 
@@ -525,7 +532,7 @@ class EnsembleModel(torch.nn.Module):
         return [model.encoder(**encoder_input) for model in self.models]
 
     @torch.no_grad()
-    def forward_decoder(self, tokens, encoder_outs, temperature=1.):
+    def forward_decoder(self, tokens, encoder_outs, temperature=1., **kwargs):
         if len(self.models) == 1:
             return self._decode_one(
                 tokens,
@@ -534,6 +541,7 @@ class EnsembleModel(torch.nn.Module):
                 self.incremental_states,
                 log_probs=True,
                 temperature=temperature,
+                **kwargs
             )
 
         log_probs = []
@@ -546,6 +554,7 @@ class EnsembleModel(torch.nn.Module):
                 self.incremental_states,
                 log_probs=True,
                 temperature=temperature,
+                **kwargs
             )
             log_probs.append(probs)
             if attn is not None:
@@ -560,15 +569,17 @@ class EnsembleModel(torch.nn.Module):
 
     def _decode_one(
         self, tokens, model, encoder_out, incremental_states, log_probs,
-        temperature=1.,
+        temperature=1., **kwargs
     ):
         if self.incremental_states is not None:
             decoder_out = list(model.forward_decoder(
-                tokens, encoder_out=encoder_out, incremental_state=self.incremental_states[model],
+                tokens, encoder_out=encoder_out, incremental_state=self.incremental_states[model], **{k:v for k,v in kwargs.items() if k not in [
+                    'task', 'args', 'knn_dstore'
+                ]}
             ))
         else:
             decoder_out = list(model.forward_decoder(tokens, encoder_out=encoder_out))
-        decoder_out[0] = decoder_out[0][:, -1:, :]
+        decoder_out[0] = decoder_out[0][:, -1:, :] # (T, B, C)
         if temperature != 1.:
             decoder_out[0].div_(temperature)
         attn = decoder_out[1]
@@ -579,7 +590,20 @@ class EnsembleModel(torch.nn.Module):
         if attn is not None:
             attn = attn[:, -1, :]
         probs = model.get_normalized_probs(decoder_out, log_probs=log_probs)
-        probs = probs[:, -1, :]
+        probs = probs[:, -1, :] # (T * B, V)
+
+        args = kwargs['args']
+        if args.knnlm:
+            dstore = kwargs['knn_dstore']
+            queries = decoder_out[1][args.knn_keytype] # (T, B, C+S)
+            yhat_knn_vocab_prob = dstore.run_query_interactive(queries, vocab_size=probs.shape[-1]) # (T * B, V)
+
+            if args.fp16:
+                yhat_knn_vocab_prob = yhat_knn_vocab_prob.half()
+                probs = probs.half()
+
+            probs = combine_knn_and_vocab_probs(yhat_knn_vocab_prob, probs, args.lmbda) # (T * B, V)
+            
         return probs, attn
 
     def reorder_encoder_out(self, encoder_outs, new_order):

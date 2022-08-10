@@ -182,10 +182,11 @@ class Trainer(object):
                     self.get_criterion().load_state_dict(
                         state["criterion"], strict=True
                     )
-            except Exception:
+            except Exception as e:
                 raise Exception(
                     "Cannot load model parameters from checkpoint {}; "
-                    "please ensure that the architectures match.".format(filename)
+                    "please ensure that the architectures match."
+                    "\nReason: {}".format(filename, e)
                 )
 
             extra_state = state["extra_state"]
@@ -549,7 +550,7 @@ class Trainer(object):
             sample = utils.move_to_cuda(sample)
 
         def apply_half(t):
-            if t.dtype is torch.float32:
+            if t.is_floating_point() and t.dtype is not torch.float16:
                 return t.half()
             return t
 

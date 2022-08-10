@@ -73,6 +73,10 @@ class AverageMeter(Meter):
     @property
     def avg(self):
         return self.sum / self.count if self.count > 0 else self.val
+    
+    @property
+    def agg(self):
+        return self.avg
 
     @property
     def smoothed_value(self) -> float:
@@ -129,6 +133,10 @@ class TimeMeter(Meter):
         return self.n / self.elapsed_time
 
     @property
+    def agg(self):
+        return self.avg
+
+    @property
     def elapsed_time(self):
         return self.init + (time.perf_counter() - self.start)
 
@@ -179,6 +187,10 @@ class StopwatchMeter(Meter):
     @property
     def avg(self):
         return self.sum / self.n if self.n > 0 else self.sum
+
+    @property
+    def agg(self):
+        return self.avg
 
     @property
     def elapsed_time(self):

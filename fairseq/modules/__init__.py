@@ -24,6 +24,7 @@ from .multihead_attention import MultiheadAttention
 from .positional_embedding import PositionalEmbedding
 from .scalar_bias import ScalarBias
 from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
+from .style_input import StyleInput
 from .transformer_sentence_encoder_layer import TransformerSentenceEncoderLayer
 from .transformer_sentence_encoder import TransformerSentenceEncoder
 from .unfold import unfold1d
@@ -55,6 +56,7 @@ __all__ = [
     'PositionalEmbedding',
     'ScalarBias',
     'SinusoidalPositionalEmbedding',
+    'StyleInput',
     'TransformerSentenceEncoderLayer',
     'TransformerSentenceEncoder',
     'TransformerDecoderLayer',

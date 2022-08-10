@@ -21,9 +21,11 @@ from .indexed_dataset import IndexedCachedDataset, IndexedDataset, IndexedRawTex
 from .language_pair_dataset import LanguagePairDataset
 from .list_dataset import ListDataset
 from .lm_context_window_dataset import LMContextWindowDataset
+from .lm_context_window_style_dataset import LMContextWindowStyleDataset
 from .lru_cache_dataset import LRUCacheDataset
 from .mask_tokens_dataset import MaskTokensDataset
 from .monolingual_dataset import MonolingualDataset
+from .monolingual_style_dataset import MonolingualStyleDataset
 from .multi_corpus_sampled_dataset import MultiCorpusSampledDataset
 from .nested_dictionary_dataset import NestedDictionaryDataset
 from .noising import NoisingDataset
@@ -76,10 +78,12 @@ __all__ = [
     'LeftPadDataset',
     'ListDataset',
     'LMContextWindowDataset',
+    'LMContextWindowStyleDataset',
     'LRUCacheDataset',
     'MaskTokensDataset',
     'MMapIndexedDataset',
     'MonolingualDataset',
+    'MonolingualStyleDataset',
     'MultiCorpusSampledDataset',
     'NestedDictionaryDataset',
     'NoisingDataset',

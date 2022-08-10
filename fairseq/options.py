@@ -35,6 +35,7 @@ def get_generation_parser(interactive=False, default_task="translation"):
     add_generation_args(parser)
     if interactive:
         add_interactive_args(parser)
+    add_dstore_args(parser)
     return parser
 
 
@@ -104,8 +105,10 @@ def parse_args_and_arch(
             parse_known=parse_known,
             suppress_defaults=False,
         )
-        suppressed_parser = argparse.ArgumentParser(add_help=False, parents=[parser])
-        suppressed_parser.set_defaults(**{k: None for k, v in vars(args).items()})
+        suppressed_parser = argparse.ArgumentParser(
+            add_help=False, parents=[parser])
+        suppressed_parser.set_defaults(
+            **{k: None for k, v in vars(args).items()})
         args = suppressed_parser.parse_args(input_args)
         return argparse.Namespace(
             **{k: v for k, v in vars(args).items() if v is not None}
@@ -289,46 +292,50 @@ def add_preprocess_args(parser):
 def add_dataset_args(parser, train=False, gen=False):
     group = parser.add_argument_group("Dataset and data loading")
     # fmt: off
-    group.add_argument('--num-workers', default=1, type=int, metavar='N',
-                       help='how many subprocesses to use for data loading')
+    group.add_argument('--num-workers', default=1, type=int, metavar='N', 
+                        help='how many subprocesses to use for data loading')
     group.add_argument('--skip-invalid-size-inputs-valid-test', action='store_true',
-                       help='ignore too long or too short lines in valid and test set')
+                        help='ignore too long or too short lines in valid and test set')
     group.add_argument('--max-tokens', type=int, metavar='N',
-                       help='maximum number of tokens in a batch')
+                        help='maximum number of tokens in a batch')
     group.add_argument('--max-sentences', '--batch-size', type=int, metavar='N',
-                       help='maximum number of sentences in a batch')
+                        help='maximum number of sentences in a batch')
     group.add_argument('--required-batch-size-multiple', default=8, type=int, metavar='N',
-                       help='batch size will be a multiplier of this value')
+                        help='batch size will be a multiplier of this value')
     parser.add_argument('--dataset-impl', metavar='FORMAT',
                         choices=get_available_dataset_impl(),
                         help='output dataset implementation')
+    group.add_argument('--style-path', default=None, type=str, metavar='FILE',
+                        help='Filepath where style attributes of the dataset are stored')
+    group.add_argument('--avg-style', action='store_true',
+                        help='Use average of style attributes in each sample.')
     if train:
         group.add_argument('--train-subset', default='train', metavar='SPLIT',
-                           help='data subset to use for training (e.g. train, valid, test)')
+                            help='data subset to use for training (e.g. train, valid, test)')
         group.add_argument('--valid-subset', default='valid', metavar='SPLIT',
-                           help='comma separated list of data subsets to use for validation'
+                            help='comma separated list of data subsets to use for validation'
                                 ' (e.g. train, valid, test)')
         group.add_argument('--validate-interval', type=int, default=1, metavar='N',
-                           help='validate every N epochs')
+                            help='validate every N epochs')
         group.add_argument('--fixed-validation-seed', default=None, type=int, metavar='N',
-                           help='specified random seed for validation')
+                            help='specified random seed for validation')
         group.add_argument('--disable-validation', action='store_true',
-                           help='disable validation')
+                            help='disable validation')
         group.add_argument('--max-tokens-valid', type=int, metavar='N',
-                           help='maximum number of tokens in a validation batch'
+                            help='maximum number of tokens in a validation batch'
                                 ' (defaults to --max-tokens)')
         group.add_argument('--max-sentences-valid', type=int, metavar='N',
-                           help='maximum number of sentences in a validation batch'
+                            help='maximum number of sentences in a validation batch'
                                 ' (defaults to --max-sentences)')
         group.add_argument('--curriculum', default=0, type=int, metavar='N',
-                           help='don\'t shuffle batches for first N epochs')
+                            help='don\'t shuffle batches for first N epochs')
     if gen:
         group.add_argument('--gen-subset', default='test', metavar='SPLIT',
-                           help='data subset to generate (train, valid, test)')
+                            help='data subset to generate (train, valid, test)')
         group.add_argument('--num-shards', default=1, type=int, metavar='N',
-                           help='shard generation over N shards')
+                            help='shard generation over N shards')
         group.add_argument('--shard-id', default=0, type=int, metavar='ID',
-                           help='id of the shard to generate (id < num_shards)')
+                            help='id of the shard to generate (id < num_shards)')
     # fmt: on
     return group
 
@@ -472,26 +479,76 @@ def add_common_eval_args(group):
 def add_eval_lm_args(parser):
     group = parser.add_argument_group("LM Evaluation")
     add_common_eval_args(group)
+    add_dstore_args(group)
     # fmt: off
     group.add_argument('--output-word-probs', action='store_true',
                        help='if set, outputs words and their predicted log probabilities to standard output')
     group.add_argument('--output-word-stats', action='store_true',
                        help='if set, outputs word statistics such as word count, average probability, etc')
     group.add_argument('--context-window', default=0, type=int, metavar='N',
-                       help='ensures that every evaluated token has access to a context of at least this size,'
-                            ' if possible')
+                      help='ensures that every evaluated token has access to a context of at least this size,'
+                           ' if possible')
     group.add_argument('--softmax-batch', default=sys.maxsize, type=int, metavar='N',
                        help='if BxT is more than this, will batch the softmax over vocab to this amount of tokens'
                             ' in order to fit into GPU memory')
     group.add_argument('--lm-eval', default=True, action='store_true',
                        help='helpful for certain ops that are only used during eval')
+
+    group.add_argument(
+        '--report-metrics', default=[], nargs='*', 
+        choices=['style', 'topk-vocab-precision', 'topk-ds-precision'],
+        help='Which metrics to report during evaluation (\'topk-ds-precision\' only available if --knnlm is used)'
+    )
+    group.add_argument('--top-k', default=None, type=int, 
+        help='How many items to include in top-k metrics (see --report-metrics)'
+    )
+    group.add_argument('--save-vars', default=[], nargs='*', 
+        choices=[
+        "predictions", "dictionary",
+        "knns", "dists", 
+        "reftargets",
+        "refstyle", "style", 
+        "correctness"
+        ], 
+        help='which variables to save during evaluation (dstore-specific variables will only be used if the dstore is in use). Only use this if you have enough RAM to store the selected variables in memory.'
+    )
+    group.add_argument('--save-vars-dir', default=None, type=str, 
+        help='The directory where cached variables will be saved'
+    )
+    # fmt: on
+
+
+def add_dstore_args(group):
+    ## knnlm related items
+    group.add_argument('--knn-keytype', type=str, default=None,
+                        help='for knnlm WT103 results, use last_ffn_input')
+    group.add_argument('--probe', default=8, type=int,
+                        help='for FAISS, the number of lists to query')
+    group.add_argument('--k', default=1024, type=int,
+                        help='number of nearest neighbors to retrieve')
+    group.add_argument('--indexfile', type=str, default=None,
+                        help='File containing the index built using faiss for knn')
+    group.add_argument('--lmbda', default=0.0, type=float,
+                        help='controls interpolation with knn, 0.0 = no knn')
+    group.add_argument('--knn-sim-func', default=None, type=str,
+                        help='similarity function to use for knns')
+    group.add_argument('--faiss-metric-type', default='l2', type=str,
+                        help='the distance metric for faiss')
+    group.add_argument('--no-load-keys', default=False, action='store_true',
+                        help='do not load keys')
+    group.add_argument('--dstore-fp16', default=False, action='store_true',
+                        help='if true, datastore items are saved in fp16 and int16')
+    group.add_argument('--move-dstore-to-mem', default=False, action='store_true',
+                        help='move the keys and values for knn to memory')
+
     group.add_argument('--knnlm', action='store_true',
                        help='use the k-nearest neighbors language model')
     group.add_argument('--save-knnlm-dstore', action='store_true',
                        help='save keys for the knnlm datastore')
     group.add_argument('--dstore-mmap', default=None, type=str,
-                       help='If saving knnlm dstore, save keys and values to this file')
-    # fmt: on
+                       help='Save dstore memmaps to this filepath')
+    group.add_argument('--dstore-save-style', default=False, action='store_true',
+                       help='Save style attributes to dstore')
 
 
 def add_generation_args(parser):
@@ -577,6 +634,11 @@ def add_interactive_args(parser):
                        help='read this many sentences into a buffer before processing them')
     group.add_argument('--input', default='-', type=str, metavar='FILE',
                        help='file to read from; use - for stdin')
+    
+    # for style architecture
+    group.add_argument('--style', type=float, default=None)
+    group.add_argument('--style-input-dim', type=float, default=None)
+    group.add_argument('--style-embed-dim', type=float, default=None)
     # fmt: on
 
 

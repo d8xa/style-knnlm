@@ -3,6 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import argparse
 from fairseq import options, utils
 from fairseq.models import (
     FairseqLanguageModel,
@@ -115,6 +116,12 @@ class TransformerLanguageModel(FairseqLanguageModel):
                             help='add layernorm to embedding')
         parser.add_argument('--no-scale-embedding', action='store_true',
                             help='if True, dont scale embeddings')
+        # args for style-knnlm
+        parser.add_argument('--style-input-dim', default=argparse.SUPPRESS, type=int, 
+                            help='dimension of the style attributes, if used')
+        parser.add_argument('--style-embed-dim', default=argparse.SUPPRESS, type=int, 
+                            help='number of dimensions to embed style attributes with')
+
         # fmt: on
 
     @classmethod
@@ -231,6 +238,13 @@ def transformer_lm_baevski_wiki103(args):
     args.no_decoder_final_norm = getattr(args, 'no_decoder_final_norm', True)
     args.tie_adaptive_proj = getattr(args, 'tie_adaptive_proj', True)
     transformer_lm_big(args)
+
+
+@register_model_architecture('transformer_lm', 'transformer_lm_style')
+def transformer_lm_style(args):
+    transformer_lm_baevski_wiki103(args)
+    args.style_input_dim = getattr(args, "style_input_dim", 1)
+    args.style_embed_dim = getattr(args, "style_embed_dim", 16)
 
 
 @register_model_architecture('transformer_lm', 'transformer_lm_gbw')

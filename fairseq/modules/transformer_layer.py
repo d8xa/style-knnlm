@@ -139,7 +139,11 @@ class TransformerDecoderLayer(nn.Module):
         self, args, no_encoder_attn=False, add_bias_kv=False, add_zero_attn=False
     ):
         super().__init__()
-        self.embed_dim = args.decoder_embed_dim
+        self.style_embed_dim = getattr(args, "style_embed_dim", 0)
+        if args.arch == "transformer_lm_style":
+            self.embed_dim = args.decoder_embed_dim + self.style_embed_dim
+        else:
+            self.embed_dim = args.decoder_embed_dim
         self.cross_self_attention = getattr(args, "cross_self_attention", False)
         self.self_attn = MultiheadAttention(
             embed_dim=self.embed_dim,
