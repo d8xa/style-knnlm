@@ -1,6 +1,6 @@
 # k-Nearest-Neighbor Language Models with Style Attributes
 
-This repository is a fork of the [knnlm](https://github.com/urvashik/knnlm) repository ([commit](https://github.com/urvashik/knnlm/commits/8afab92bfcc8be28eccdf41fb82582a80977346e)) and adds support for style attributes.
+This repository is a fork of the [knnlm](https://github.com/urvashik/knnlm) repository (see [commit](https://github.com/urvashik/knnlm/commits/8afab92bfcc8be28eccdf41fb82582a80977346e)) and adds support for style attributes.
 
 
 ## How to use
@@ -81,7 +81,7 @@ python eval_lm.py \
 
 ### Training the FAISS index
 
-The index training script `build_index.py ` was rewritten and many parameters were renamed. Use the `--help` argument for more info.
+The index training script `build_index.py` was rewritten and many parameters were renamed. Use the `--help` argument for more info.
 
 ```{bash}
 python build_index.py \
@@ -116,15 +116,15 @@ python eval_lm.py \
 
 We added some custom evaluation metrics to `eval_lm.py`, which can be enabled separately with `--report-metrics`, and reported during/after evaluation. 
 
-* `style`: Style MAE/MBE. The mean average/bias error of retrieved style vs. requested style.
+* `style`: Style MAE/MBE. The mean absolute/bias error of retrieved style vs. requested style.
 * `topk-ds-precision`: Top-k datastore retrieval precision. Requires the additional parameter `--top-k` to be set.
-* Top-k LM precision of probabilities. If `--knnlm` is used, all three probabilites will be used(LM, datastore, interpolated). Otherwise only LM probabilities will be used. Requires the additional parameter `--top-k` to be set. 
+* Top-k LM precision of probabilities. If `--knnlm` is used, all three probabilites will be used (LM, datastore, interpolated). Otherwise only LM probabilities will be used. Requires the additional parameter `--top-k` to be set. 
 
 
 
 #### Saving intermediate variables
 
-To support saving intermediate variables we adapt [efficient-knnlm](https://github.com/jxhe/efficient-knnlm)'s code.
+To support saving intermediate variables we adapt some of [efficient-knnlm](https://github.com/jxhe/efficient-knnlm)'s code.
 
 Variables can be saved to `--save-vars-dir` with `--save-vars`. Options for `--save-vars` are:
 
