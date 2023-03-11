@@ -146,6 +146,29 @@ class KNN_Dstore(object):
             raise ValueError("No query results saved.")
         return self.last_query_result
 
+    def run_query_interactive(self, queries, vocab_size):
+        # NOTE: queries should not contain any pad tokens during interactive generation, so any padding-related operations were taken out.
+
+        qshape = queries.shape # (T, B, C)
+        queries = queries.view(-1, qshape[-1]) # (T * B, C)
+
+        dists, knns = self.get_knns(queries)
+        dists = torch.from_numpy(dists).cuda() # (T_reduced * B, K)
+        dists = dist_func(self, dists, knns, queries, function=self.sim_func)
+
+        knn_token_ids = torch.from_numpy(self.vals[knns].squeeze(-1)).long().cuda()
+
+        probs = utils.log_softmax(dists, dim=-1)
+        #full_yhat_knn_prob = torch.logsumexp(probs, dim=-1) # (T_reduced * B, K)
+        full_yhat_knn_token_prob = (
+            self.get_vocab_probs_interactive(qshape, knn_token_ids, probs, vocab_size)
+                .view(-1, vocab_size) # (T_reduced * B, V)
+        )
+        # NOTE: theoretically always (T_reduced == T)
+
+        return full_yhat_knn_token_prob 
+
+
     def run_query(self, queries, tgt, pad_idx, calc_vocab_prob=True, task=None):
         qshape = queries.shape # (T, B, C)
         queries = queries.view(-1, qshape[-1]) # (T * B, C)
@@ -204,9 +227,30 @@ class KNN_Dstore(object):
             mask[mask == 0] = -10000
             mask[mask == 1] = 0
             yhat_knn_token_prob[i, unique_token_ids] = torch.logsumexp(
-                probs[i].repeat(unique_token_ids.shape[0], 1) + mask, dim=-1).clone()
+                probs[i].repeat(unique_token_ids.shape[0], 1) + mask, dim=-1)
         full_yhat_knn_token_prob = torch.full([qshape[0] * qshape[1], vocab_size], -10000.).cuda()
         full_yhat_knn_token_prob[pad_mask] = yhat_knn_token_prob
+        del yhat_knn_token_prob
+        return full_yhat_knn_token_prob
+
+    def get_vocab_probs_interactive(self, qshape, knn_token_ids, probs, vocab_size):
+        full_yhat_knn_token_prob = torch.full([knn_token_ids.shape[0], vocab_size], -10000.).cuda()
+        for i, row in enumerate(knn_token_ids):
+            unique_token_ids = row.unique()
+            mask = torch.where(
+                torch.eq(knn_token_ids[i].repeat(
+                unique_token_ids.shape[0], 1), unique_token_ids.unsqueeze(-1)),
+                0., -10000.
+            ).float()
+            # mask = torch.eq(knn_token_ids[i].repeat(
+            #     unique_token_ids.shape[0], 1), unique_token_ids.unsqueeze(-1)).float()
+            # mask[mask == 0] = -10000
+            # mask[mask == 1] = 0
+            full_yhat_knn_token_prob[i, unique_token_ids] = (
+                torch.logsumexp(
+                    probs[i].repeat(unique_token_ids.shape[0], 1) + mask, dim=-1)
+                    #.clone()
+            )
         return full_yhat_knn_token_prob
 
     def maybe_get_knn_token_ids(self, knns, knn_token_ids=None):

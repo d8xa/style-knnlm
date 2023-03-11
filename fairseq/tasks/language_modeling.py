@@ -214,7 +214,7 @@ class LanguageModelingTask(FairseqTask):
 
 
     def build_dataset_for_inference(self, src_tokens, src_lengths, **kwargs):
-        raise NotImplementedError("Does not support style attributes yet.")
+        #raise NotImplementedError("Does not support style attributes yet.")
         """
         Generate batches for inference. We prepend an eos token to src_tokens
         (or bos if `--add-bos-token` is set) and we append an eos to target.
@@ -252,8 +252,7 @@ class LanguageModelingTask(FairseqTask):
             sizes=[np.array(src_lengths)],
         )
 
-    def inference_step(self, generator, models, sample, prefix_tokens=None):
-        raise NotImplementedError("Does not support style attributes yet.")
+    def inference_step(self, generator, models, sample, prefix_tokens=None, **kwargs):
         with torch.no_grad():
             # Generation will always be conditioned on bos_token
             if getattr(self.args, "add_bos_token", False):
@@ -270,6 +269,7 @@ class LanguageModelingTask(FairseqTask):
 
             return generator.generate(
                 models, sample, prefix_tokens=prefix_tokens, bos_token=bos_token,
+                **kwargs
             )
 
     @property

@@ -623,6 +623,9 @@ def add_generation_args(parser):
 
     # special decoding format for advanced decoding.
     group.add_argument('--decoding-format', default=None, type=str, choices=['unigram', 'ensemble', 'vote', 'dp', 'bs'])
+
+    group.add_argument('--print-positional', action='store_true',
+                       help='print positional scores')
     # fmt: on
     return group
 
